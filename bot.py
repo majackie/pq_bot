@@ -10,6 +10,9 @@ TEMPLATES = {
     "accept": "./images/accept_button.png",  # accept match found prompt (after matchmaking)
     "auto_match": "./images/auto_match_button.png",  # start matchmaking from the main menu
     "leave": "./images/leave_button.png",  # dismisses "Leave the party?" prompt after a match
+    "x1": "./images/x1_button.png",  # close ad
+    "x2": "./images/x2_button.png",  # close ad
+    "x3": "./images/x3_button.png",  # close ad
 }
 THRESHOLD = 0.85  # match confidence (0–1); lower = more lenient
 CLICK_COOLDOWN = 2.0  # seconds to wait after a tap before checking again
@@ -56,14 +59,23 @@ def tap(x: int, y: int, duration_ms: int = 100):
     adb("shell", "input", "swipe", str(x), str(y), str(x), str(y), str(duration_ms))
 
 
+def connect():
+    subprocess.run(
+        ["adb", "connect", ADB_HOST],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def main():
     print(f"Connecting to {ADB_HOST}...")
+    connect()
     adb("shell", "echo", "ok")  # verify connection
-    print("Connected.\n")
+    print("Connected.")
 
     print("Loading templates...")
     templates = load_templates(TEMPLATES)
-    print(f"\nPress Ctrl+C to stop.\n")
+    print(f"Press Ctrl+C to stop.")
 
     while True:
         screen = screencap()
