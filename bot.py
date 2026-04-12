@@ -1,3 +1,4 @@
+import curses
 import subprocess
 import sys
 import time
@@ -45,7 +46,6 @@ def load_templates(paths: dict) -> dict:
         if img is None:
             sys.exit(f"ERROR: could not load template '{path}'")
         templates[name] = img
-        print(f"  loaded '{name}': {img.shape[1]}x{img.shape[0]}px")
     return templates
 
 
@@ -67,15 +67,43 @@ def connect():
     )
 
 
-def main():
-    print(f"Connecting to {ADB_HOST}...")
+def draw_header(win, matches: int, avg_duration: float):
+    avg_str = f"{avg_duration / 60:.1f}min" if matches > 0 else "n/a"
+    width = win.getmaxyx()[1]
+    text = f" matches: {matches}  |  avg match duration: {avg_str} "
+    text = text.ljust(width - 1)
+    win.erase()
+    win.addstr(0, 0, text, curses.A_REVERSE)
+    win.refresh()
+
+
+def log(win, msg: str):
+    win.addstr(msg + "\n")
+    win.refresh()
+
+
+def run(stdscr):
+    curses.curs_set(0)
+    height, width = stdscr.getmaxyx()
+
+    header_win = curses.newwin(1, width, 0, 0)
+    log_win = curses.newwin(height - 1, width, 1, 0)
+    log_win.scrollok(True)
+
+    draw_header(header_win, 0, 0)
+
     connect()
     adb("shell", "echo", "ok")  # verify connection
-    print("Connected.")
 
-    print("Loading templates...")
     templates = load_templates(TEMPLATES)
-    print(f"Press Ctrl+C to stop.")
+
+    leave_count = 0
+    last_tapped = None
+    last_leave_time = None
+    leave_intervals = []
+    accept_time = None        # set when 'accept' is tapped; cleared if anything else interrupts
+    clean_sequence = False    # True only if no other taps occurred between accept and leave
+    match_durations = []
 
     while True:
         screen = screencap()
@@ -89,13 +117,46 @@ def main():
                 cx = loc[0] + tw // 2
                 cy = loc[1] + th // 2
                 tap(cx, cy)
+                now = time.monotonic()
+
+                if name == "accept":
+                    accept_time = now
+                    clean_sequence = True
+                elif name == "leave" and last_tapped != "leave":
+                    if accept_time is not None and clean_sequence:
+                        match_durations.append(now - accept_time)
+                    accept_time = None
+                    clean_sequence = False
+
+                    if last_leave_time is not None:
+                        interval = now - last_leave_time
+                        if interval <= 360:
+                            leave_intervals.append(interval)
+                    last_leave_time = now
+                    leave_count += 1
+
+                    avg_duration = sum(match_durations) / len(match_durations) if match_durations else 0
+                    draw_header(header_win, len(match_durations), avg_duration)
+                elif name not in ("leave",):
+                    # any other tap (okay, auto_match, ads) invalidates the accept→leave window
+                    if accept_time is not None:
+                        clean_sequence = False
+
                 ts = time.strftime("%H:%M:%S")
-                print(f"[{ts}] '{name}' matched (conf={confidence:.2f}) → tapped ({cx}, {cy})")
+                log(log_win, f"[{ts}] '{name}' matched (conf={confidence:.2f}) → tapped ({cx}, {cy})")
+                last_tapped = name
                 clicked = True
                 break
 
         if clicked:
             time.sleep(CLICK_COOLDOWN)
+
+
+def main():
+    try:
+        curses.wrapper(run)
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":
