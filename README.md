@@ -1,6 +1,6 @@
 # pq_bot
 
-Automatically clicks the Accept and Auto Match buttons in Maplestory Idle RPG on Waydroid.
+Automatically runs party quests and closes ads in Maplestory Idle RPG on Waydroid.
 
 ## Description
 
@@ -10,8 +10,12 @@ Watches the Waydroid screen via ADB and taps the following buttons whenever they
 - **Accept** — accepts an incoming party quest match
 - **OK** — dismisses the "Lost connection to the party" prompt
 - **Leave** — dismisses the clear screen after a match ends
+- **X (x1/x2/x3)** — dismisses ads for free-to-play gamers
+- **Stuck** — dismisses the "Matchmaking is taking longer than expected" prompt and restarts the queue
 
 Does not move the mouse cursor and works with Waydroid running in the background.
+
+The bot displays a live status header showing total matches completed and average match duration.
 
 ## Installation
 
@@ -52,24 +56,18 @@ Allow the connection from your computer:
 
 ### 2. Connect ADB to Waydroid
 
-First, check if Waydroid is already connected:
-```
-adb devices
-```
+The bot will automatically attempt to connect to ADB on startup using the `ADB_HOST` address configured in `bot.py`. You can also connect manually beforehand:
 
-If you see an entry like `192.168.240.112:5555    device`, skip to step 3.
-
-If nothing is listed, find your Waydroid IP with:
-```
-waydroid status
-```
-
-Look for the `IP` field, then connect manually:
 ```
 adb connect <ip>:5555
 ```
 
-Run `adb devices` again to confirm the connection.
+To find your Waydroid IP:
+```
+waydroid status
+```
+
+Look for the `IP` field. Run `adb devices` to confirm the connection.
 
 ### 3. Update the IP address in bot.py
 
@@ -98,6 +96,9 @@ Edit the constants at the top of `bot.py`:
 - **`ADB_HOST`** — Waydroid ADB address
 - **`THRESHOLD`** — Match confidence from 0 to 1. Lower if buttons aren't being detected. Raise if it's clicking the wrong spot
 - **`CLICK_COOLDOWN`** — Seconds to wait after a tap before checking again (default: 2)
+- **`STUCK_DELAY`** — Seconds after accepting a match before the bot starts watching for the "Matchmaking is taking longer than expected" prompt (default: 360)
+- **`MAX_LEAVE_INTERVAL`** — Maximum seconds between leave events to be counted toward match stats (default: 360)
+- **`TAP_DURATION_MS`** — Duration in milliseconds for each tap swipe (default: 100)
 
 > **Note:** The bot checks the screen as fast as possible. Detection latency is ~1.4s due to the time Android takes to capture a screenshot via ADB.
 
