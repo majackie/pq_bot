@@ -18,8 +18,8 @@ TEMPLATES = {
 }
 THRESHOLD = 0.85  # match confidence (0–1); lower = more lenient
 CLICK_COOLDOWN = 2.0  # seconds to wait after a tap before checking again
-STUCK_DELAY = 120.0  # seconds after auto_match before checking for the stuck prompt
-STUCK_CONF = 0.92  # require higher confidence for stuck to avoid false positives
+STUCK_DELAY = 400.0  # seconds after auto_match before checking for the stuck prompt
+STUCK_CONF = 0.85  # require higher confidence for stuck to avoid false positives
 TAP_DURATION_MS = 100  # milliseconds for each tap swipe
 
 
