@@ -6,20 +6,20 @@ import cv2
 import numpy as np
 
 ADB_HOST = "192.168.240.112:5555"  # waydroid adb address
+DEFAULT_THRESHOLD = 0.85  # match confidence (0–1); lower = more lenient
 TEMPLATES = {
-    "okay": "./images/okay_button.png",  # dismisses "Lost connection to the party" prompt
-    "accept": "./images/accept_button.png",  # accept match found prompt (after matchmaking)
-    "auto_match": "./images/auto_match_button.png",  # start matchmaking from the main menu
-    "leave": "./images/leave_button.png",  # dismisses "Leave the party?" prompt after a match
-    "x1": "./images/x1_button.png",  # close ad
-    "x2": "./images/x2_button.png",  # close ad
-    "x3": "./images/x3_button.png",  # close ad
-    "stuck": "./images/stuck_button.png",  # restart queue
+    "okay": ("./images/okay_button.png", DEFAULT_THRESHOLD),  # dismisses "Lost connection to the party" prompt
+    "accept": ("./images/accept_button.png", DEFAULT_THRESHOLD),  # accept match found prompt (after matchmaking)
+    "match_once": ("./images/match_once_button.png", DEFAULT_THRESHOLD),  # start one matchmaking
+    "auto_match": ("./images/auto_match_button.png", DEFAULT_THRESHOLD),  # start matchmaking from the main menu
+    "leave": ("./images/leave_button.png", DEFAULT_THRESHOLD),  # dismisses "Leave the party?" prompt after a match
+    "x1": ("./images/x1_button.png", DEFAULT_THRESHOLD),  # close ad
+    "x2": ("./images/x2_button.png", DEFAULT_THRESHOLD),  # close ad
+    "x3": ("./images/x3_button.png", DEFAULT_THRESHOLD),  # close ad
+    "stuck": ("./images/stuck_button.png", DEFAULT_THRESHOLD),  # restart queue
 }
-THRESHOLD = 0.85  # match confidence (0–1); lower = more lenient
 CLICK_COOLDOWN = 2.0  # seconds to wait after a tap before checking again
 STUCK_DELAY = 400.0  # seconds after auto_match before checking for the stuck prompt
-STUCK_CONF = 0.85  # require higher confidence for stuck to avoid false positives
 TAP_DURATION_MS = 100  # milliseconds for each tap swipe
 
 
@@ -45,11 +45,11 @@ def screencap() -> np.ndarray:
 
 def load_templates(paths: dict) -> dict:
     templates = {}
-    for name, path in paths.items():
+    for name, (path, threshold) in paths.items():
         img = cv2.imread(path, cv2.IMREAD_COLOR)
         if img is None:
             sys.exit(f"ERROR: could not load template '{path}'")
-        templates[name] = img
+        templates[name] = (img, float(threshold))
     return templates
 
 
@@ -104,9 +104,10 @@ def close_ads_and_resume(log_win, templates: dict) -> bool:
     """
     screen = screencap()
     for xn in ("x3", "x2", "x1"):
-        conf_x, loc_x = find_button(screen, templates[xn])
-        if conf_x >= THRESHOLD:
-            th_x, tw_x = templates[xn].shape[:2]
+        template_x, thresh_x = templates[xn]
+        conf_x, loc_x = find_button(screen, template_x)
+        if conf_x >= thresh_x:
+            th_x, tw_x = template_x.shape[:2]
             cx_x = loc_x[0] + tw_x // 2
             cy_x = loc_x[1] + th_x // 2
             tap(cx_x, cy_x)
@@ -115,9 +116,10 @@ def close_ads_and_resume(log_win, templates: dict) -> bool:
             time.sleep(0.5)
             screen = screencap()
 
-    conf_am, loc_am = find_button(screen, templates["auto_match"])
-    if conf_am >= THRESHOLD:
-        th_am, tw_am = templates["auto_match"].shape[:2]
+    template_am, thresh_am = templates["auto_match"]
+    conf_am, loc_am = find_button(screen, template_am)
+    if conf_am >= thresh_am:
+        th_am, tw_am = template_am.shape[:2]
         cx_am = loc_am[0] + tw_am // 2
         cy_am = loc_am[1] + th_am // 2
         tap(cx_am, cy_am)
@@ -155,7 +157,7 @@ def run(stdscr):
         screen = screencap()
 
         clicked = False
-        for name, template in templates.items():
+        for name, (template, threshold) in templates.items():
             if name == "stuck":
                 # only check for stuck while actively matchmaking and after STUCK_DELAY
                 if not in_matchmaking:
@@ -168,16 +170,16 @@ def run(stdscr):
             confidence, loc = find_button(screen, template)
 
             if name == "stuck":
-                # require higher confidence for stuck
-                if confidence < STUCK_CONF:
+                if confidence < threshold:
                     continue
                 # if auto_match is also visible at this confidence, we are on the main
                 # menu and this is a false positive; skip
-                conf_am, _ = find_button(screen, templates["auto_match"])
-                if conf_am >= THRESHOLD:
+                template_am, thresh_am = templates["auto_match"]
+                conf_am, _ = find_button(screen, template_am)
+                if conf_am >= thresh_am:
                     continue
 
-            if confidence < THRESHOLD:
+            if confidence < threshold:
                 continue
 
             th, tw = template.shape[:2]
@@ -213,9 +215,10 @@ def run(stdscr):
                     time.sleep(0.5)
                     # okay may reveal the stuck prompt before ads; check first
                     new_screen = screencap()
-                    conf_stuck, loc_stuck = find_button(new_screen, templates["stuck"])
-                    if conf_stuck >= STUCK_CONF:
-                        th_s, tw_s = templates["stuck"].shape[:2]
+                    template_stuck, thresh_stuck = templates["stuck"]
+                    conf_stuck, loc_stuck = find_button(new_screen, template_stuck)
+                    if conf_stuck >= thresh_stuck:
+                        th_s, tw_s = template_stuck.shape[:2]
                         cx_s = loc_stuck[0] + tw_s // 2
                         cy_s = loc_stuck[1] + th_s // 2
                         tap(cx_s, cy_s)
