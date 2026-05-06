@@ -16,6 +16,7 @@ TEMPLATES = {
     "x1": ("./images/x1_button.png", DEFAULT_THRESHOLD),  # close ad
     "x2": ("./images/x2_button.png", DEFAULT_THRESHOLD),  # close ad
     "x3": ("./images/x3_button.png", DEFAULT_THRESHOLD),  # close ad
+    "x4": ("./images/x4_button.png", DEFAULT_THRESHOLD),  # close ad
     "stuck": ("./images/stuck_button.png", DEFAULT_THRESHOLD),  # restart queue
 }
 CLICK_COOLDOWN = 2.0  # seconds to wait after a tap before checking again
@@ -146,129 +147,140 @@ def run(stdscr):
     templates = load_templates(TEMPLATES)
 
     last_tapped = None
-    accept_time = None  # time accept was tapped; cleared on leave or interruption
-    clean_sequence = False  # True only if no other taps occurred between accept and leave
+    match_once_time = None  # time match_once was tapped; cleared on leave or interruption
+    clean_sequence = False  # True only if no other taps occurred between match_once and leave
     match_durations = []
+    match_count = 0
 
     in_matchmaking = False  # True from auto_match tap until leave tap
     last_auto_match_time = None  # used to gate stuck detection by STUCK_DELAY
 
-    while True:
-        screen = screencap()
+    try:
+        while True:
+            screen = screencap()
 
-        clicked = False
-        for name, (template, threshold) in templates.items():
-            if name == "stuck":
-                # only check for stuck while actively matchmaking and after STUCK_DELAY
-                if not in_matchmaking:
-                    continue
-                if last_auto_match_time is None:
-                    continue
-                if (time.monotonic() - last_auto_match_time) < STUCK_DELAY:
-                    continue
+            clicked = False
+            for name, (template, threshold) in templates.items():
+                if name == "stuck":
+                    # only check for stuck while actively matchmaking and after STUCK_DELAY
+                    if not in_matchmaking:
+                        continue
+                    if last_auto_match_time is None:
+                        continue
+                    if (time.monotonic() - last_auto_match_time) < STUCK_DELAY:
+                        continue
 
-            confidence, loc = find_button(screen, template)
+                confidence, loc = find_button(screen, template)
 
-            if name == "stuck":
+                if name == "stuck":
+                    if confidence < threshold:
+                        continue
+                    # if auto_match is also visible at this confidence, we are on the main
+                    # menu and this is a false positive; skip
+                    template_am, thresh_am = templates["auto_match"]
+                    conf_am, _ = find_button(screen, template_am)
+                    if conf_am >= thresh_am:
+                        continue
+
                 if confidence < threshold:
                     continue
-                # if auto_match is also visible at this confidence, we are on the main
-                # menu and this is a false positive; skip
-                template_am, thresh_am = templates["auto_match"]
-                conf_am, _ = find_button(screen, template_am)
-                if conf_am >= thresh_am:
-                    continue
 
-            if confidence < threshold:
-                continue
+                th, tw = template.shape[:2]
+                cx = loc[0] + tw // 2
+                cy = loc[1] + th // 2
+                tap(cx, cy)
+                now = time.monotonic()
 
-            th, tw = template.shape[:2]
-            cx = loc[0] + tw // 2
-            cy = loc[1] + th // 2
-            tap(cx, cy)
-            now = time.monotonic()
+                if name == "match_once":
+                    match_once_time = now
+                    clean_sequence = True
 
-            if name == "accept":
-                accept_time = now
-                clean_sequence = True
+                elif name == "leave" and last_tapped != "leave":
+                    match_count += 1
+                    if match_once_time is not None and clean_sequence:
+                        match_durations.append(now - match_once_time)
 
-            elif name == "leave" and last_tapped != "leave":
-                if accept_time is not None and clean_sequence:
-                    match_durations.append(now - accept_time)
-
-                accept_time = None
-                clean_sequence = False
-                in_matchmaking = False
-                last_auto_match_time = None
-
-                avg_duration = sum(match_durations) / len(match_durations) if match_durations else 0
-                draw_header(header_win, len(match_durations), avg_duration)
-
-            elif name == "auto_match":
-                in_matchmaking = True
-                last_auto_match_time = now
-
-            elif name == "okay":
-                if accept_time is not None:
+                    match_once_time = None
                     clean_sequence = False
-                try:
-                    time.sleep(0.5)
-                    # okay may reveal the stuck prompt before ads; check first
-                    new_screen = screencap()
-                    template_stuck, thresh_stuck = templates["stuck"]
-                    conf_stuck, loc_stuck = find_button(new_screen, template_stuck)
-                    if conf_stuck >= thresh_stuck:
-                        th_s, tw_s = template_stuck.shape[:2]
-                        cx_s = loc_stuck[0] + tw_s // 2
-                        cy_s = loc_stuck[1] + th_s // 2
-                        tap(cx_s, cy_s)
-                        ts = time.strftime("%H:%M:%S")
-                        log(
-                            log_win,
-                            f"[{ts}] {'stuck'.ljust(10)} matched (conf={conf_stuck:.2f}) → tapped ({cx_s}, {cy_s})",
-                        )
+                    in_matchmaking = False
+                    last_auto_match_time = None
+
+                    avg_duration = sum(match_durations) / len(match_durations) if match_durations else 0
+                    draw_header(header_win, match_count, avg_duration)
+
+                elif name == "auto_match":
+                    in_matchmaking = True
+                    last_auto_match_time = now
+
+                elif name == "okay":
+                    if match_once_time is not None:
+                        clean_sequence = False
+                    try:
                         time.sleep(0.5)
-                    resumed = close_ads_and_resume(log_win, templates)
-                    if resumed:
-                        last_auto_match_time = time.monotonic()
-                        in_matchmaking = True
-                except Exception:
-                    pass
+                        # okay may reveal the stuck prompt before ads; check first
+                        new_screen = screencap()
+                        template_stuck, thresh_stuck = templates["stuck"]
+                        conf_stuck, loc_stuck = find_button(new_screen, template_stuck)
+                        if conf_stuck >= thresh_stuck:
+                            th_s, tw_s = template_stuck.shape[:2]
+                            cx_s = loc_stuck[0] + tw_s // 2
+                            cy_s = loc_stuck[1] + th_s // 2
+                            tap(cx_s, cy_s)
+                            ts = time.strftime("%H:%M:%S")
+                            log(
+                                log_win,
+                                f"[{ts}] {'stuck'.ljust(10)} matched (conf={conf_stuck:.2f}) → tapped ({cx_s}, {cy_s})",
+                            )
+                            time.sleep(0.5)
+                        resumed = close_ads_and_resume(log_win, templates)
+                        if resumed:
+                            last_auto_match_time = time.monotonic()
+                            in_matchmaking = True
+                    except Exception:
+                        pass
 
-            elif name == "stuck":
-                if accept_time is not None:
-                    clean_sequence = False
-                # reset timer so stuck is not immediately re-detected
-                last_auto_match_time = now
-                try:
-                    time.sleep(0.5)
-                    resumed = close_ads_and_resume(log_win, templates)
-                    if resumed:
-                        last_auto_match_time = time.monotonic()
-                        in_matchmaking = True
-                except Exception:
-                    pass
+                elif name == "stuck":
+                    if match_once_time is not None:
+                        clean_sequence = False
+                    # reset timer so stuck is not immediately re-detected
+                    last_auto_match_time = now
+                    try:
+                        time.sleep(0.5)
+                        resumed = close_ads_and_resume(log_win, templates)
+                        if resumed:
+                            last_auto_match_time = time.monotonic()
+                            in_matchmaking = True
+                    except Exception:
+                        pass
 
-            else:
-                # ad close buttons (x1, x2, x3)
-                if accept_time is not None:
-                    clean_sequence = False
+                else:
+                    # ad close buttons (x1, x2, x3)
+                    if match_once_time is not None:
+                        clean_sequence = False
 
-            ts = time.strftime("%H:%M:%S")
-            log(log_win, f"[{ts}] {name.ljust(10)} matched (conf={confidence:.2f}) → tapped ({cx}, {cy})")
-            last_tapped = name
-            clicked = True
-            break
+                ts = time.strftime("%H:%M:%S")
+                log(log_win, f"[{ts}] {name.ljust(10)} matched (conf={confidence:.2f}) → tapped ({cx}, {cy})")
+                last_tapped = name
+                clicked = True
+                break
 
-        if clicked:
-            time.sleep(CLICK_COOLDOWN)
+            if clicked:
+                time.sleep(CLICK_COOLDOWN)
+    except KeyboardInterrupt:
+        pass
+
+    avg_duration = sum(match_durations) / len(match_durations) if match_durations else 0
+    return match_count, avg_duration
 
 
 def main():
     try:
-        curses.wrapper(run)
+        match_count, avg_duration = curses.wrapper(run)
     except KeyboardInterrupt:
-        pass
+        return
+
+    avg_str = f"{avg_duration / 60:.1f}min" if match_count > 0 else "n/a"
+    print(f"matches: {match_count} | avg match duration: {avg_str}")
 
 
 if __name__ == "__main__":
