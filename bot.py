@@ -17,6 +17,8 @@ TEMPLATES = {
     "x2": ("./images/x2_button.png", DEFAULT_THRESHOLD),  # close ad
     "x3": ("./images/x3_button.png", DEFAULT_THRESHOLD),  # close ad
     "x4": ("./images/x4_button.png", DEFAULT_THRESHOLD),  # close ad
+    "x5": ("./images/x5_button.png", DEFAULT_THRESHOLD),  # close ad
+    "x6": ("./images/x6_button.png", DEFAULT_THRESHOLD),  # close ad
     "stuck": ("./images/stuck_button.png", DEFAULT_THRESHOLD),  # restart queue
 }
 CLICK_COOLDOWN = 2.0  # seconds to wait after a tap before checking again
